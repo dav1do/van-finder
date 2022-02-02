@@ -1,15 +1,19 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
-use tokio::{signal, time::sleep};
+use chrono::DateTime;
+use serde::{Deserialize, Serialize};
+use tokio::{fs, signal, time::sleep};
 use tracing::{error, info, warn};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
-use van_finder::Error;
+use van_finder::{Error, HighwaterMark, Site, StoredHighwaterData, VanData, VanSummary};
 
+static FAKE_DB: &'static str = "./highwater_data.json";
 static REPEAT_INTERVAL_SECONDS: u64 = 3600;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     println!("Starting...");
+    dotenv::dotenv().unwrap();
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()?;
@@ -22,7 +26,7 @@ async fn main() -> Result<(), Error> {
     info!("Initialized... ");
 
     loop {
-        let _ = van_finder(&client).await?;
+        let hw = van_finder(&client).await?;
         sleep(Duration::from_secs(REPEAT_INTERVAL_SECONDS)).await;
     }
 }
@@ -30,21 +34,86 @@ async fn main() -> Result<(), Error> {
 async fn van_finder(client: &reqwest::Client) -> Result<(), Error> {
     info!("we made it...");
     //spawn task for each site that parses/and returns any interesting data
-    van_camper(&client).await?;
+    let mut previous_hw = StoredHighwaterData::read_data(FAKE_DB)
+        .await?
+        .unwrap_or_else(|| StoredHighwaterData {
+            data: BTreeMap::new(),
+        });
+
+    let vc_data = previous_hw.data.get(&Site::TheVanCamper).map(|v| v.clone());
+    let res = van_camper(&client, vc_data).await?;
+    previous_hw.write_data(FAKE_DB, vec![res.highwater]).await?;
+
     Ok(())
 }
 
-async fn van_camper(client: &reqwest::Client) -> Result<(), Error> {
+async fn van_camper(
+    client: &reqwest::Client,
+    previous: Option<HighwaterMark>,
+) -> Result<VanData, Error> {
     let host = "https://api.thevancamper.com";
     let api = "posts";
-    let query = "%24limit=12&%24skip=0&%24select%5B0%5D=id&%24select%5B1%5D=title&%24select%5B2%5D=price&%24select%5B3%5D=odometer&%24select%5B4%5D=odometerUnit&%24select%5B5%5D=seats&%24select%5B6%5D=sleeps&%24select%5B7%5D=year&%24select%5B8%5D=fuel&%24select%5B9%5D=currency&%24select%5B10%5D=isSold&%24select%5B11%5D=isPending&%24select%5B12%5D=createdAt&%24select%5B13%5D=videoUrl&%24select%5B14%5D=messagingMode&%24eager=%5Bimages%2Cplace%28defaultSelects%29%5D&%24sort%5BisSold%5D=1&%24sort%5BcreatedAt%5D=-1&sleeps%5B%24gte%5D=2&seats%5B%24gte%5D=3&price%5B%24gte%5D=0&price%5B%24lte%5D=9000000";
-    let url = format!("{}/{}?{}", host, api, query);
-    let resp = client.get(url).send().await?;
-    let json: serde_json::Value = resp.json().await?;
-    let van_data: van_finder::VanCamperResp = serde_json::from_value(json)?;
+    let mut skip = 0;
+    let limit = 12;
+    let mut new_hw: Option<HighwaterMark> = None;
+    let mut new_van_info: Vec<VanSummary> = Vec::new();
+    loop {
+        let query = format!("%24limit={}&%24skip={}&%24select%5B0%5D=id&%24select%5B1%5D=title&%24select%5B2%5D=price&%24select%5B3%5D=odometer&%24select%5B4%5D=odometerUnit&%24select%5B5%5D=seats&%24select%5B6%5D=sleeps&%24select%5B7%5D=year&%24select%5B8%5D=fuel&%24select%5B9%5D=currency&%24select%5B10%5D=isSold&%24select%5B11%5D=isPending&%24select%5B12%5D=createdAt&%24select%5B13%5D=videoUrl&%24select%5B14%5D=messagingMode&%24eager=%5Bimages%2Cplace%28defaultSelects%29%5D&%24sort%5BisSold%5D=1&%24sort%5BcreatedAt%5D=-1&sleeps%5B%24gte%5D=2&seats%5B%24gte%5D=3&price%5B%24gte%5D=0&price%5B%24lte%5D=9000000", limit, skip);
+        let url = format!("{}/{}?{}", host, api, query);
+        let resp = client.get(url).send().await?;
+        let json: serde_json::Value = resp.json().await?;
+        let van_data: van_finder::VanCamperResp = serde_json::from_value(json)?;
 
-    warn!("Found data: {:?}", van_data.data);
-    Ok(())
+        let last_loop = van_data.data.len() < 1 || van_data.total < skip;
+        // check if we are going past our previous HW mark and flag as last loop
+        if new_hw.is_none() {
+            let newest = van_data.data.first();
+            new_hw = newest.map_or_else(
+                || {
+                    Some(HighwaterMark {
+                        site: Site::TheVanCamper,
+                        created_at: HighwaterMark::default_datetime(),
+                        id: "".into(),
+                    })
+                },
+                |d| {
+                    Some(HighwaterMark {
+                        site: Site::TheVanCamper,
+                        created_at: d.created_at.parse::<_>().unwrap_or_else(|err| {
+                            warn!("Failed to parse highwater timestamp: {:?}", err);
+                            HighwaterMark::default_datetime()
+                        }),
+                        id: d.id.to_string(),
+                    })
+                },
+            );
+        }
+
+        let van_summaries = van_data
+            .data
+            .into_iter()
+            .map(|van| VanSummary {
+                url: format!("https://thevancamper.com/post/{}", van.id),
+                name: van.title,
+                price: van.display_price,
+                miles: format!("{} {:?}", van.odometer, van.odometer_unit),
+            })
+            .collect::<Vec<_>>();
+
+        new_van_info.extend(van_summaries);
+
+        if last_loop {
+            break;
+        }
+        skip += limit;
+    }
+    info!("{:?}", new_van_info);
+    info!("{:?}", new_hw);
+    Ok(VanData {
+        site: Site::TheVanCamper,
+        highwater: new_hw.unwrap(),
+        data: new_van_info,
+    })
 }
 
 /*

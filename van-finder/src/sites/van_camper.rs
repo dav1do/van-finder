@@ -29,42 +29,12 @@ pub struct Datum {
     pub created_at: String,
     #[serde(rename = "videoUrl")]
     pub video_url: Option<String>,
-    #[serde(rename = "messagingMode")]
-    pub messaging_mode: MessagingMode,
     pub place: Place,
-    pub images: Vec<Image>,
     #[serde(rename = "displayPrice")]
     pub display_price: String,
     #[serde(rename = "pricingInfo")]
     pub pricing_info: PricingInfo,
     pub slug: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Image {
-    pub bucket: Bucket,
-    pub id: i64,
-    pub path: String,
-    #[serde(rename = "postSort")]
-    pub post_sort: i64,
-    pub url: String,
-    pub alts: Alts,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Alts {
-    #[serde(rename = "100")]
-    pub the_100: String,
-    #[serde(rename = "400")]
-    pub the_400: String,
-    #[serde(rename = "600")]
-    pub the_600: String,
-    #[serde(rename = "800")]
-    pub the_800: String,
-    #[serde(rename = "1400")]
-    pub the_1400: String,
-    pub twitter: String,
-    pub og: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -103,20 +73,6 @@ pub enum Fuel {
     Diesel,
     #[serde(rename = "gasoline")]
     Gasoline,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Bucket {
-    #[serde(rename = "vancamp")]
-    Vancamp,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum MessagingMode {
-    #[serde(rename = "automatic")]
-    Automatic,
-    #[serde(rename = "on")]
-    On,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
