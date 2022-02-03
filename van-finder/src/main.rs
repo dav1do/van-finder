@@ -1,12 +1,19 @@
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
+use once_cell::sync::Lazy;
 use tokio::time::sleep;
 use tracing::{debug, info};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 use van_finder::{van_summary_html, Error, Site, StoredHighwaterData};
 
-static FAKE_DB: &'static str = "./highwater_data.json";
-static REPEAT_INTERVAL_SECONDS: u64 = 3600;
+static FAKE_DB: Lazy<String> = Lazy::new(|| std::env::var("FAKE_DB").expect("FAKE_DB required"));
+
+static REPEAT_INTERVAL_SECONDS: Lazy<u64> = Lazy::new(|| {
+    std::env::var("REPEAT_INTERVAL_SECONDS")
+        .unwrap_or("86400".into())
+        .parse()
+        .expect("REPEAT_INTERVAL_SECONDS must be valid integer")
+});
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -25,12 +32,12 @@ async fn main() -> Result<(), Error> {
 
     loop {
         let _ = van_finder(&client).await?;
-        sleep(Duration::from_secs(REPEAT_INTERVAL_SECONDS)).await;
+        sleep(Duration::from_secs(*REPEAT_INTERVAL_SECONDS)).await;
     }
 }
 
 async fn van_finder(client: &reqwest::Client) -> Result<(), Error> {
-    let path = Path::new(FAKE_DB);
+    let path = Path::new(&*FAKE_DB);
     //spawn task for each site that parses/and returns any interesting data
     let mut previous_hw = StoredHighwaterData::read_data(path)
         .await?
