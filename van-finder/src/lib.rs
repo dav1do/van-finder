@@ -1,16 +1,16 @@
 mod errors;
+mod highwater;
 mod mailer;
 mod sites;
 
-use std::{collections::BTreeMap, path::Path};
+use std::fmt::Display;
 
 use chrono::DateTime;
 pub use errors::Error;
+pub use highwater::*;
 pub use mailer::send_email;
 use serde::{Deserialize, Serialize};
 pub use sites::*;
-use tracing::warn;
-
 pub type VanTime = DateTime<chrono::Utc>;
 
 pub trait VanDataProvider {
@@ -27,71 +27,11 @@ pub struct VanData {
     pub data: Vec<VanSummary>,
 }
 
-impl VanData {
-    pub fn to_html(&self) -> String {
-        let s = self
-            .data
-            .iter()
-            .map(|v| format!("<li>{}</li>", v.to_html()))
-            .collect::<Vec<_>>()
-            .join("");
-        let val = format!("<html>{}</html>", s);
-        val
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
 pub enum Site {
     TheVanCamper,
     VanLifeTrader,
     VanViewer,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StoredHighwaterData {
-    pub data: BTreeMap<Site, HighwaterMark>,
-}
-
-impl StoredHighwaterData {
-    pub async fn write_data(
-        &mut self,
-        path: impl AsRef<Path>,
-        data: Vec<HighwaterMark>,
-    ) -> Result<(), Error> {
-        for hw in data {
-            if let Some(val) = self.data.get_mut(&hw.site) {
-                val.created_at = hw.created_at;
-                val.id = hw.id;
-            } else {
-                self.data.insert(hw.site.clone(), hw);
-            }
-        }
-        let marshall = serde_json::to_string(self)?;
-        tokio::fs::write(path, marshall.as_bytes()).await?;
-        Ok(())
-    }
-
-    pub async fn read_data(path: impl AsRef<Path>) -> Result<Option<StoredHighwaterData>, Error> {
-        let hw = tokio::fs::read(path).await?;
-        let val = serde_json::from_slice(&hw).unwrap_or_else(|err| {
-            warn!("failed to parse data: {:?}", err);
-            None
-        });
-        Ok(val)
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
-pub struct HighwaterMark {
-    pub site: Site,
-    pub created_at: VanTime,
-    pub id: String,
-}
-
-impl HighwaterMark {
-    pub fn default_datetime() -> VanTime {
-        chrono::Utc::now() - chrono::Duration::days(365)
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
@@ -100,14 +40,44 @@ pub struct VanSummary {
     pub name: String,
     pub price: String,
     pub miles: String,
+    pub status: SaleStatus,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
+pub enum SaleStatus {
+    IsSold,
+    IsPending,
+    ForSale,
+    Unknown,
+}
+
+impl Display for SaleStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SaleStatus::IsSold => write!(f, "Sold"),
+            SaleStatus::IsPending => write!(f, "Sale Pending"),
+            SaleStatus::ForSale => write!(f, "For Sale"),
+            SaleStatus::Unknown => write!(f, "Unknown"),
+        }
+    }
 }
 
 impl VanSummary {
     pub fn to_html(&self) -> String {
         let val = format!(
-            r#"<div><a href="{}">{}</a><p> {} - {}</p></div>"#,
-            self.url, self.name, self.price, self.miles
+            r#"<div><a href="{}">{}</a><p> {} - {} ({})</p></div>"#,
+            self.url, self.name, self.price, self.miles, self.status
         );
         val
     }
+}
+
+pub fn van_summary_html(van_data: &Vec<VanSummary>) -> String {
+    let s = van_data
+        .iter()
+        .map(|v| format!("<li>{}</li>", v.to_html()))
+        .collect::<Vec<_>>()
+        .join("");
+    let val = format!("<html>{}</html>", s);
+    val
 }

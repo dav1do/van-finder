@@ -1,7 +1,7 @@
 use crate::Error;
 
 use chrono::Local;
-use lettre::message::{header, MultiPart, SinglePart};
+use lettre::message::SinglePart;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 use once_cell::sync::Lazy;
