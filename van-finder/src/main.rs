@@ -42,7 +42,10 @@ async fn van_finder(client: &reqwest::Client) -> Result<(), Error> {
 
     let vc_data = previous_hw.data.get(&Site::TheVanCamper).map(|v| v.clone());
     let res = van_camper(&client, vc_data).await?;
-    previous_hw.write_data(FAKE_DB, vec![res.highwater]).await?;
+    previous_hw
+        .write_data(FAKE_DB, vec![res.highwater.clone()])
+        .await?;
+    van_finder::send_email(res.to_html()).await?;
 
     Ok(())
 }

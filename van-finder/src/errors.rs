@@ -4,6 +4,10 @@ use thiserror::Error as ThisError;
 pub enum Error {
     #[error("{0}")]
     Custom(String),
+    #[error("Lettre error: {0:?}")]
+    Lettre(#[from] lettre::error::Error),
+    #[error("Lettre SMTP error: {0:?}")]
+    LettreSmtp(#[from] lettre::transport::smtp::Error),
     #[error("Reqwest: {0:?}")]
     Reqwest(#[from] reqwest::Error),
     #[error("IO Error: {0:?}")]

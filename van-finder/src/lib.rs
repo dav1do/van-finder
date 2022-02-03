@@ -1,13 +1,12 @@
 mod errors;
+mod mailer;
 mod sites;
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    path::Path,
-};
+use std::{collections::BTreeMap, path::Path};
 
 use chrono::DateTime;
 pub use errors::Error;
+pub use mailer::send_email;
 use serde::{Deserialize, Serialize};
 pub use sites::*;
 use tracing::warn;
@@ -21,10 +20,24 @@ pub trait VanDataProvider {
     ) -> Result<VanData, Error>;
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct VanData {
     pub site: Site,
     pub highwater: HighwaterMark,
     pub data: Vec<VanSummary>,
+}
+
+impl VanData {
+    pub fn to_html(&self) -> String {
+        let s = self
+            .data
+            .iter()
+            .map(|v| format!("<li>{}</li>", v.to_html()))
+            .collect::<Vec<_>>()
+            .join("");
+        let val = format!("<html>{}</html>", s);
+        val
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
@@ -80,10 +93,21 @@ impl HighwaterMark {
         chrono::Utc::now() - chrono::Duration::days(365)
     }
 }
-#[derive(Clone, Debug)]
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
 pub struct VanSummary {
     pub url: String,
     pub name: String,
     pub price: String,
     pub miles: String,
+}
+
+impl VanSummary {
+    pub fn to_html(&self) -> String {
+        let val = format!(
+            r#"<div><a href="{}">{}</a><p> {} - {}</p></div>"#,
+            self.url, self.name, self.price, self.miles
+        );
+        val
+    }
 }
