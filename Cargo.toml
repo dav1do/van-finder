@@ -2,3 +2,5 @@
 members = [
     "van-finder"
 ]
+
+resolver = "2"

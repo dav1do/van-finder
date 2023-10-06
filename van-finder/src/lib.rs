@@ -34,20 +34,36 @@ pub enum Site {
     VanViewer,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Ord)]
 pub struct VanSummary {
     pub url: String,
     pub name: String,
-    pub price: String,
-    pub miles: String,
+    pub summary: String,
+    pub price: i32,
+    pub miles: i32,
     pub status: SaleStatus,
+}
+
+impl PartialOrd for VanSummary {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.status.partial_cmp(&other.status) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.miles.partial_cmp(&other.miles) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+
+        self.price.partial_cmp(&other.price)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
 pub enum SaleStatus {
-    IsSold,
-    IsPending,
     ForSale,
+    IsPending,
+    IsSold,
     Unknown,
 }
 
@@ -65,14 +81,14 @@ impl Display for SaleStatus {
 impl VanSummary {
     pub fn to_html(&self) -> String {
         let val = format!(
-            r#"<div><a href="{}">{}</a><p> {} - {} ({})</p></div>"#,
-            self.url, self.name, self.price, self.miles, self.status
+            r#"<div><a href="{}">{}</a><p> {} ({})</p></div>"#,
+            self.url, self.name, self.summary, self.status
         );
         val
     }
 }
 
-pub fn van_summary_html(van_data: &Vec<VanSummary>) -> String {
+pub fn van_summary_html(van_data: &[VanSummary]) -> String {
     let s = van_data
         .iter()
         .map(|v| format!("<li>{}</li>", v.to_html()))

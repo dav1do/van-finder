@@ -23,7 +23,7 @@ pub async fn send_email(msg: String) -> Result<(), Error> {
     let email = Message::builder()
         .from(GMAIL_USER.parse().unwrap())
         .to(RECIPIENT_EMAIL.parse().unwrap())
-        .subject(format!("Van Finder: {}", Local::now().date()))
+        .subject(format!("Van Finder: {}", Local::now().naive_local()))
         .singlepart(SinglePart::html(msg))?;
 
     let creds = Credentials::new(GMAIL_USER.to_string(), GMAIL_PASSWORD.to_string());

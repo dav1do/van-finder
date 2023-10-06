@@ -31,7 +31,7 @@ async fn main() -> Result<(), Error> {
     info!("Initialized... ");
 
     loop {
-        let _ = van_finder(&client).await?;
+        van_finder(&client).await?;
         sleep(Duration::from_secs(*REPEAT_INTERVAL_SECONDS)).await;
     }
 }
@@ -45,16 +45,16 @@ async fn van_finder(client: &reqwest::Client) -> Result<(), Error> {
             data: BTreeMap::new(),
         });
 
-    let vc_data = previous_hw.data.get(&Site::TheVanCamper).map(|v| v.clone());
+    let vc_data = previous_hw.data.get(&Site::TheVanCamper).cloned();
     debug!("van camper data: {:?}", vc_data);
-    let van_camper_data = van_finder::van_camper(&client, vc_data).await?;
+    let van_camper_data = van_finder::van_camper(client, vc_data).await?;
     // repeat with other sites
     //append extra hw data to vec
     previous_hw
         .write_data(path, vec![van_camper_data.highwater.clone()])
         .await?;
     //combine all data into Vec<VanSummary> and email
-    if van_camper_data.data.len() > 0 {
+    if !van_camper_data.data.is_empty() {
         van_finder::send_email(van_summary_html(&van_camper_data.data)).await?;
     } else {
         info!("no new data.. not emailing");

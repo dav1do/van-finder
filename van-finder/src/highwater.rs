@@ -25,7 +25,7 @@ impl StoredHighwaterData {
     }
 
     pub async fn read_data(path: &Path) -> Result<Option<StoredHighwaterData>, Error> {
-        let hw = match tokio::fs::read(path.clone()).await {
+        let hw = match tokio::fs::read(path).await {
             Ok(data) => data,
             Err(e) => match e.kind() {
                 std::io::ErrorKind::NotFound => {
